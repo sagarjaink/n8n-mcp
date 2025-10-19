@@ -83,16 +83,14 @@ ENV IS_DOCKER=true
 # ENV N8N_MCP_TELEMETRY_DISABLED=true
 
 # Expose HTTP port
-EXPOSE 3000
+EXPOSE 8080
 
 # Set stop signal to SIGTERM (default, but explicit is better)
 STOPSIGNAL SIGTERM
 
-EXPOSE 8080
-
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://127.0.0.1:3000/health || exit 1
+  CMD curl -f http://127.0.0.1:8080/health || exit 1
 
 # Optimized entrypoint
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
