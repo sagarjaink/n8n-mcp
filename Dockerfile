@@ -88,6 +88,8 @@ EXPOSE 3000
 # Set stop signal to SIGTERM (default, but explicit is better)
 STOPSIGNAL SIGTERM
 
+EXPOSE 8080
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://127.0.0.1:3000/health || exit 1
