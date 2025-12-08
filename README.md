@@ -5,7 +5,7 @@
 [![npm version](https://img.shields.io/npm/v/n8n-mcp.svg)](https://www.npmjs.com/package/n8n-mcp)
 [![codecov](https://codecov.io/gh/czlonkowski/n8n-mcp/graph/badge.svg?token=YOUR_TOKEN)](https://codecov.io/gh/czlonkowski/n8n-mcp)
 [![Tests](https://img.shields.io/badge/tests-3336%20passing-brightgreen.svg)](https://github.com/czlonkowski/n8n-mcp/actions)
-[![n8n version](https://img.shields.io/badge/n8n-1.121.2-orange.svg)](https://github.com/n8n-io/n8n)
+[![n8n version](https://img.shields.io/badge/n8n-1.122.4-orange.svg)](https://github.com/n8n-io/n8n)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io%2Fczlonkowski%2Fn8n--mcp-green.svg)](https://github.com/czlonkowski/n8n-mcp/pkgs/container/n8n-mcp)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/n8n-mcp?referralCode=n8n-mcp)
 
@@ -501,6 +501,9 @@ Complete guide for integrating n8n-MCP with Windsurf using project rules.
 ### [Codex](./docs/CODEX_SETUP.md)
 Complete guide for integrating n8n-MCP with Codex.
 
+### [Antigravity](./docs/ANTIGRAVITY_SETUP.md)
+Complete guide for integrating n8n-MCP with Antigravity.
+
 ## 🎓 Add Claude Skills (Optional)
 
 Supercharge your n8n workflow building with specialized skills that teach AI how to build production-ready workflows!
@@ -595,7 +598,7 @@ ALWAYS explicitly configure ALL parameters that control node behavior.
    - `n8n_create_workflow(workflow)` - Deploy
    - `n8n_validate_workflow({id})` - Post-deployment check
    - `n8n_update_partial_workflow({id, operations: [...]})` - Batch updates
-   - `n8n_trigger_webhook_workflow()` - Test webhooks
+   - `n8n_test_workflow({workflowId})` - Test workflow execution
 
 ## Critical Warnings
 
@@ -954,7 +957,7 @@ Once connected, Claude can use these powerful tools:
   - `searchMode: 'by_metadata'` - Filter by `complexity`, `requiredService`, `targetAudience`
 - **`get_template`** - Get complete workflow JSON (modes: nodes_only, structure, full)
 
-### n8n Management Tools (12 tools - Requires API Configuration)
+### n8n Management Tools (13 tools - Requires API Configuration)
 These tools require `N8N_API_URL` and `N8N_API_KEY` in your configuration.
 
 #### Workflow Management
@@ -971,9 +974,13 @@ These tools require `N8N_API_URL` and `N8N_API_KEY` in your configuration.
 - **`n8n_validate_workflow`** - Validate workflows in n8n by ID
 - **`n8n_autofix_workflow`** - Automatically fix common workflow errors
 - **`n8n_workflow_versions`** - Manage version history and rollback
+- **`n8n_deploy_template`** - Deploy templates from n8n.io directly to your instance with auto-fix
 
 #### Execution Management
-- **`n8n_trigger_webhook_workflow`** - Trigger workflows via webhook URL
+- **`n8n_test_workflow`** - Test/trigger workflow execution:
+  - Auto-detects trigger type (webhook, form, chat) from workflow
+  - Supports custom data, headers, and HTTP methods for webhooks
+  - Chat triggers support message and sessionId for conversations
 - **`n8n_executions`** - Unified execution management (v2.26.0):
   - `action: 'list'` - List executions with status filtering
   - `action: 'get'` - Get execution details by ID

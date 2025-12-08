@@ -30,6 +30,7 @@ export interface WorkflowNode {
   waitBetweenTries?: number;
   alwaysOutputData?: boolean;
   executeOnce?: boolean;
+  webhookId?: string; // n8n assigns this for webhook/form/chat trigger nodes
 }
 
 export interface WorkflowConnection {
@@ -222,6 +223,28 @@ export interface HealthCheckResponse {
     workers?: boolean;
     [key: string]: boolean | undefined;
   };
+}
+
+// n8n Version Information
+export interface N8nVersionInfo {
+  version: string;          // Full version string, e.g., "1.119.0"
+  major: number;            // Major version number
+  minor: number;            // Minor version number
+  patch: number;            // Patch version number
+}
+
+// Settings data within the response
+export interface N8nSettingsData {
+  n8nVersion?: string;
+  versionCli?: string;
+  instanceId?: string;
+  [key: string]: unknown;
+}
+
+// Response from /rest/settings endpoint (unauthenticated)
+// The actual response wraps settings in a "data" property
+export interface N8nSettingsResponse {
+  data?: N8nSettingsData;
 }
 
 // Request Parameter Types

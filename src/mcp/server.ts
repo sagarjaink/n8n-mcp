@@ -220,7 +220,46 @@ export class N8NDocumentationMCPServer {
 
     this.setupHandlers();
   }
-  
+
+  /**
+   * Close the server and release resources.
+   * Should be called when the session is being removed.
+   *
+   * Order of cleanup:
+   * 1. Close MCP server connection
+   * 2. Destroy cache (clears entries AND stops cleanup timer)
+   * 3. Close database connection
+   * 4. Null out references to help GC
+   */
+  async close(): Promise<void> {
+    try {
+      await this.server.close();
+
+      // Use destroy() not clear() - also stops the cleanup timer
+      this.cache.destroy();
+
+      // Close database connection before nullifying reference
+      if (this.db) {
+        try {
+          this.db.close();
+        } catch (dbError) {
+          logger.warn('Error closing database', {
+            error: dbError instanceof Error ? dbError.message : String(dbError)
+          });
+        }
+      }
+
+      // Null out references to help garbage collection
+      this.db = null;
+      this.repository = null;
+      this.templateService = null;
+      this.earlyLogger = null;
+    } catch (error) {
+      // Log but don't throw - cleanup should be best-effort
+      logger.warn('Error closing MCP server', { error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   private async initializeDatabase(dbPath: string): Promise<void> {
     try {
       // Checkpoint: Database connecting (v2.18.3)
@@ -856,6 +895,12 @@ export class N8NDocumentationMCPServer {
           ? { valid: true, errors: [] }
           : { valid: false, errors: [{ field: 'action', message: 'action is required' }] };
         break;
+      case 'n8n_deploy_template':
+        // Requires templateId parameter
+        validationResult = args.templateId !== undefined
+          ? { valid: true, errors: [] }
+          : { valid: false, errors: [{ field: 'templateId', message: 'templateId is required' }] };
+        break;
       default:
         // For tools not yet migrated to schema validation, use basic validation
         return this.validateToolParamsBasic(toolName, args, legacyRequiredParams || []);
@@ -1170,9 +1215,9 @@ export class N8NDocumentationMCPServer {
         await this.ensureInitialized();
         if (!this.repository) throw new Error('Repository not initialized');
         return n8nHandlers.handleAutofixWorkflow(args, this.repository, this.instanceContext);
-      case 'n8n_trigger_webhook_workflow':
-        this.validateToolParams(name, args, ['webhookUrl']);
-        return n8nHandlers.handleTriggerWebhookWorkflow(args, this.instanceContext);
+      case 'n8n_test_workflow':
+        this.validateToolParams(name, args, ['workflowId']);
+        return n8nHandlers.handleTestWorkflow(args, this.instanceContext);
       case 'n8n_executions': {
         this.validateToolParams(name, args, ['action']);
         const execAction = args.action;
@@ -1202,6 +1247,13 @@ export class N8NDocumentationMCPServer {
       case 'n8n_workflow_versions':
         this.validateToolParams(name, args, ['mode']);
         return n8nHandlers.handleWorkflowVersions(args, this.repository!, this.instanceContext);
+
+      case 'n8n_deploy_template':
+        this.validateToolParams(name, args, ['templateId']);
+        await this.ensureInitialized();
+        if (!this.templateService) throw new Error('Template service not initialized');
+        if (!this.repository) throw new Error('Repository not initialized');
+        return n8nHandlers.handleDeployTemplate(args, this.templateService, this.repository, this.instanceContext);
 
       default:
         throw new Error(`Unknown tool: ${name}`);
@@ -2190,14 +2242,19 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
     // Get operations (already parsed by repository)
     const operations = node.operations || [];
     
+    // Get the latest version - this is important for AI to use correct typeVersion
+    const latestVersion = node.version ?? '1';
+
     const result = {
       nodeType: node.nodeType,
       workflowNodeType: getWorkflowNodeType(node.package ?? 'n8n-nodes-base', node.nodeType),
       displayName: node.displayName,
       description: node.description,
       category: node.category,
-      version: node.version ?? '1',
+      version: latestVersion,
       isVersioned: node.isVersioned ?? false,
+      // Prominent warning to use the correct typeVersion
+      versionNotice: `⚠️ Use typeVersion: ${latestVersion} when creating this node`,
       requiredProperties: essentials.required,
       commonProperties: essentials.common,
       operations: operations.map((op: any) => ({
