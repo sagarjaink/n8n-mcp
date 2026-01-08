@@ -12,8 +12,10 @@ import { NodeSimilarityService, NodeSuggestion } from './node-similarity-service
 import { NodeTypeNormalizer } from '../utils/node-type-normalizer';
 import { Logger } from '../utils/logger';
 import { validateAISpecificNodes, hasAINodes } from './ai-node-validator';
+import { isAIToolSubNode } from './ai-tool-validators';
 import { isTriggerNode } from '../utils/node-type-utils';
 import { isNonExecutableNode } from '../utils/node-classification';
+import { ToolVariantGenerator } from './tool-variant-generator';
 const logger = new Logger({ prefix: '[WorkflowValidator]' });
 
 interface WorkflowNode {
@@ -54,12 +56,19 @@ interface WorkflowJson {
   meta?: any;
 }
 
-interface ValidationIssue {
+export interface ValidationIssue {
   type: 'error' | 'warning';
   nodeId?: string;
   nodeName?: string;
   message: string;
   details?: any;
+  code?: string;
+  fix?: {
+    type: string;
+    currentType?: string;
+    suggestedType?: string;
+    description?: string;
+  };
 }
 
 export interface WorkflowValidationResult {
@@ -389,7 +398,39 @@ export class WorkflowValidator {
         const normalizedType = NodeTypeNormalizer.normalizeToFullForm(node.type);
 
         // Get node definition using normalized type (needed for typeVersion validation)
-        const nodeInfo = this.nodeRepository.getNode(normalizedType);
+        let nodeInfo = this.nodeRepository.getNode(normalizedType);
+
+        // Check if this is a dynamic Tool variant (e.g., googleDriveTool, googleSheetsTool)
+        // n8n creates these at runtime when ANY node is used in an AI Agent's tool slot,
+        // but they don't exist in npm packages. We infer validity if the base node exists.
+        // See: https://github.com/czlonkowski/n8n-mcp/issues/522
+        if (!nodeInfo && ToolVariantGenerator.isToolVariantNodeType(normalizedType)) {
+          const baseNodeType = ToolVariantGenerator.getBaseNodeType(normalizedType);
+          if (baseNodeType) {
+            const baseNodeInfo = this.nodeRepository.getNode(baseNodeType);
+            if (baseNodeInfo) {
+              // Valid inferred tool variant - base node exists
+              result.warnings.push({
+                type: 'warning',
+                nodeId: node.id,
+                nodeName: node.name,
+                message: `Node type "${node.type}" is inferred as a dynamic AI Tool variant of "${baseNodeType}". ` +
+                  `This Tool variant is created by n8n at runtime when connecting "${baseNodeInfo.displayName}" to an AI Agent.`,
+                code: 'INFERRED_TOOL_VARIANT'
+              });
+
+              // Create synthetic nodeInfo for validation continuity
+              nodeInfo = {
+                ...baseNodeInfo,
+                nodeType: normalizedType,
+                displayName: `${baseNodeInfo.displayName} Tool`,
+                isToolVariant: true,
+                toolVariantOf: baseNodeType,
+                isInferred: true
+              };
+            }
+          }
+        }
 
         if (!nodeInfo) {
 
@@ -485,10 +526,22 @@ export class WorkflowValidator {
           continue;
         }
 
+        // Skip PARAMETER validation for inferred tool variants (Issue #522)
+        // They have a different property structure (toolDescription added at runtime)
+        // that doesn't match the base node's schema. TypeVersion validation above still runs.
+        if ((nodeInfo as any).isInferred) {
+          continue;
+        }
+
         // Validate node configuration
+        // Add @version to parameters for displayOptions evaluation (supports _cnd operators)
+        const paramsWithVersion = {
+          '@version': node.typeVersion || 1,
+          ...node.parameters
+        };
         const nodeValidation = this.nodeValidator.validateWithMode(
           node.type,
-          node.parameters,
+          paramsWithVersion,
           nodeInfo.properties || [],
           'operation',
           profile as any
@@ -585,6 +638,9 @@ export class WorkflowValidator {
 
       // Check AI tool outputs
       if (outputs.ai_tool) {
+        // Validate that the source node can actually output ai_tool
+        this.validateAIToolSource(sourceNode, result);
+
         this.validateConnectionOutputs(
           sourceName,
           outputs.ai_tool,
@@ -856,6 +912,83 @@ export class WorkflowValidator {
         message: `Community node "${targetNode.name}" is being used as an AI tool. Ensure N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true is set.`
       });
     }
+  }
+
+  /**
+   * Validate that a node can actually output ai_tool connections.
+   *
+   * Valid ai_tool sources are:
+   * 1. Langchain tool nodes (in AI_TOOL_VALIDATORS)
+   * 2. Tool variant nodes (e.g., nodes-base.supabaseTool)
+   *
+   * If a base node (e.g., nodes-base.supabase) is used with ai_tool connection
+   * but it has a Tool variant available, this is an error.
+   */
+  private validateAIToolSource(
+    sourceNode: WorkflowNode,
+    result: WorkflowValidationResult
+  ): void {
+    const normalizedType = NodeTypeNormalizer.normalizeToFullForm(sourceNode.type);
+
+    // Check if it's a known langchain tool node
+    if (isAIToolSubNode(normalizedType)) {
+      return; // Valid - it's a langchain tool
+    }
+
+    // Get node info from repository (single lookup, reused below)
+    const nodeInfo = this.nodeRepository.getNode(normalizedType);
+
+    // Check if it's a Tool variant (ends with Tool and is in database as isToolVariant)
+    if (ToolVariantGenerator.isToolVariantNodeType(normalizedType)) {
+      // It looks like a Tool variant, verify it exists in database
+      if (nodeInfo?.isToolVariant) {
+        return; // Valid - it's a Tool variant
+      }
+    }
+
+    if (!nodeInfo) {
+      // Node not found in database - might be a community node or unknown
+      // Don't error here, let other validation handle unknown nodes
+      return;
+    }
+
+    // Check if this is a base node that has a Tool variant available
+    if (nodeInfo.hasToolVariant) {
+      const toolVariantType = ToolVariantGenerator.getToolVariantNodeType(normalizedType);
+      const workflowToolVariantType = NodeTypeNormalizer.toWorkflowFormat(toolVariantType);
+
+      result.errors.push({
+        type: 'error',
+        nodeId: sourceNode.id,
+        nodeName: sourceNode.name,
+        message: `Node "${sourceNode.name}" uses "${sourceNode.type}" which cannot output ai_tool connections. ` +
+          `Use the Tool variant "${workflowToolVariantType}" instead for AI Agent integration.`,
+        code: 'WRONG_NODE_TYPE_FOR_AI_TOOL',
+        fix: {
+          type: 'tool-variant-correction',
+          currentType: sourceNode.type,
+          suggestedType: workflowToolVariantType,
+          description: `Change node type from "${sourceNode.type}" to "${workflowToolVariantType}"`
+        }
+      });
+      return;
+    }
+
+    // Check if it's an AI-capable node (isAITool flag) but not a Tool variant
+    if (nodeInfo.isAITool) {
+      // This node is AI-capable, which is fine for ai_tool connections
+      return;
+    }
+
+    // Node is not valid for ai_tool connections
+    result.errors.push({
+      type: 'error',
+      nodeId: sourceNode.id,
+      nodeName: sourceNode.name,
+      message: `Node "${sourceNode.name}" of type "${sourceNode.type}" cannot output ai_tool connections. ` +
+        `Only AI tool nodes (e.g., Calculator, HTTP Request Tool) or Tool variants (e.g., *Tool suffix nodes) can be connected to AI Agents as tools.`,
+      code: 'INVALID_AI_TOOL_SOURCE'
+    });
   }
 
   /**

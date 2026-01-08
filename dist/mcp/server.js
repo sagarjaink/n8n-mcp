@@ -51,6 +51,7 @@ const node_repository_1 = require("../database/node-repository");
 const database_adapter_1 = require("../database/database-adapter");
 const property_filter_1 = require("../services/property-filter");
 const task_templates_1 = require("../services/task-templates");
+const config_validator_1 = require("../services/config-validator");
 const enhanced_config_validator_1 = require("../services/enhanced-config-validator");
 const property_dependencies_1 = require("../services/property-dependencies");
 const type_structure_service_1 = require("../services/type-structure-service");
@@ -150,7 +151,17 @@ class N8NDocumentationMCPServer {
     async close() {
         try {
             await this.server.close();
-            this.cache.clear();
+            this.cache.destroy();
+            if (this.db) {
+                try {
+                    this.db.close();
+                }
+                catch (dbError) {
+                    logger_1.logger.warn('Error closing database', {
+                        error: dbError instanceof Error ? dbError.message : String(dbError)
+                    });
+                }
+            }
             this.db = null;
             this.repository = null;
             this.templateService = null;
@@ -1015,12 +1026,17 @@ class N8NDocumentationMCPServer {
                 };
             });
         }
-        return {
+        const result = {
             ...node,
             workflowNodeType: (0, node_utils_1.getWorkflowNodeType)(node.package ?? 'n8n-nodes-base', node.nodeType),
             aiToolCapabilities,
             outputs
         };
+        const toolVariantInfo = this.buildToolVariantGuidance(node);
+        if (toolVariantInfo) {
+            result.toolVariantInfo = toolVariantInfo;
+        }
+        return result;
     }
     async searchNodes(query, limit = 20, options) {
         await this.ensureInitialized();
@@ -1693,6 +1709,10 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
                 developmentStyle: node.developmentStyle ?? 'programmatic'
             }
         };
+        const toolVariantInfo = this.buildToolVariantGuidance(node);
+        if (toolVariantInfo) {
+            result.toolVariantInfo = toolVariantInfo;
+        }
         if (includeExamples) {
             try {
                 const examples = this.db.prepare(`
@@ -1774,7 +1794,7 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
                 if (!node) {
                     throw new Error(`Node ${nodeType} not found`);
                 }
-                return {
+                const result = {
                     nodeType: node.nodeType,
                     workflowNodeType: (0, node_utils_1.getWorkflowNodeType)(node.package ?? 'n8n-nodes-base', node.nodeType),
                     displayName: node.displayName,
@@ -1785,6 +1805,11 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
                     isTrigger: node.isTrigger,
                     isWebhook: node.isWebhook
                 };
+                const toolVariantInfo = this.buildToolVariantGuidance(node);
+                if (toolVariantInfo) {
+                    result.toolVariantInfo = toolVariantInfo;
+                }
+                return result;
             }
             case 'standard': {
                 const essentials = await this.getNodeEssentials(nodeType, includeExamples);
@@ -2084,7 +2109,11 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
             throw new Error(`Node ${nodeType} not found`);
         }
         const properties = node.properties || [];
-        const validationResult = enhanced_config_validator_1.EnhancedConfigValidator.validateWithMode(node.nodeType, config, properties, mode, profile);
+        const configWithVersion = {
+            '@version': node.version || 1,
+            ...config
+        };
+        const validationResult = enhanced_config_validator_1.EnhancedConfigValidator.validateWithMode(node.nodeType, configWithVersion, properties, mode, profile);
         return {
             nodeType: node.nodeType,
             workflowNodeType: (0, node_utils_1.getWorkflowNodeType)(node.package, node.nodeType),
@@ -2282,6 +2311,32 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
             'Extend AI agent capabilities'
         ];
     }
+    buildToolVariantGuidance(node) {
+        const isToolVariant = !!node.isToolVariant;
+        const hasToolVariant = !!node.hasToolVariant;
+        const toolVariantOf = node.toolVariantOf;
+        if (!isToolVariant && !hasToolVariant) {
+            return undefined;
+        }
+        if (isToolVariant) {
+            return {
+                isToolVariant: true,
+                toolVariantOf,
+                hasToolVariant: false,
+                guidance: `This is the Tool variant for AI Agent integration. Use this node type when connecting to AI Agents. The base node is: ${toolVariantOf}`
+            };
+        }
+        if (hasToolVariant && node.nodeType) {
+            const toolVariantNodeType = `${node.nodeType}Tool`;
+            return {
+                isToolVariant: false,
+                hasToolVariant: true,
+                toolVariantNodeType,
+                guidance: `To use this node with AI Agents, use the Tool variant: ${toolVariantNodeType}. The Tool variant has an additional 'toolDescription' property and outputs 'ai_tool' instead of 'main'.`
+            };
+        }
+        return undefined;
+    }
     getAIToolExamples(nodeType) {
         const exampleMap = {
             'nodes-base.slack': {
@@ -2352,40 +2407,16 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
             throw new Error(`Node ${nodeType} not found`);
         }
         const properties = node.properties || [];
-        const operationContext = {
-            resource: config?.resource,
-            operation: config?.operation,
-            action: config?.action,
-            mode: config?.mode
+        const configWithVersion = {
+            '@version': node.version || 1,
+            ...(config || {})
         };
         const missingFields = [];
         for (const prop of properties) {
             if (!prop.required)
                 continue;
-            if (prop.displayOptions) {
-                let isVisible = true;
-                if (prop.displayOptions.show) {
-                    for (const [key, values] of Object.entries(prop.displayOptions.show)) {
-                        const configValue = config?.[key];
-                        const expectedValues = Array.isArray(values) ? values : [values];
-                        if (!expectedValues.includes(configValue)) {
-                            isVisible = false;
-                            break;
-                        }
-                    }
-                }
-                if (isVisible && prop.displayOptions.hide) {
-                    for (const [key, values] of Object.entries(prop.displayOptions.hide)) {
-                        const configValue = config?.[key];
-                        const expectedValues = Array.isArray(values) ? values : [values];
-                        if (expectedValues.includes(configValue)) {
-                            isVisible = false;
-                            break;
-                        }
-                    }
-                }
-                if (!isVisible)
-                    continue;
+            if (prop.displayOptions && !config_validator_1.ConfigValidator.isPropertyVisible(prop, configWithVersion)) {
+                continue;
             }
             if (!config || !(prop.name in config)) {
                 missingFields.push(prop.displayName || prop.name);

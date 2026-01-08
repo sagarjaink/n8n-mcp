@@ -518,8 +518,13 @@ export async function handleCreateWorkflow(args: unknown, context?: InstanceCont
 
     return {
       success: true,
-      data: workflow,
-      message: `Workflow "${workflow.name}" created successfully with ID: ${workflow.id}`
+      data: {
+        id: workflow.id,
+        name: workflow.name,
+        active: workflow.active,
+        nodeCount: workflow.nodes?.length || 0
+      },
+      message: `Workflow "${workflow.name}" created successfully with ID: ${workflow.id}. Use n8n_get_workflow with mode 'structure' to verify current state.`
     };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -813,8 +818,13 @@ export async function handleUpdateWorkflow(
 
     return {
       success: true,
-      data: workflow,
-      message: `Workflow "${workflow.name}" updated successfully`
+      data: {
+        id: workflow.id,
+        name: workflow.name,
+        active: workflow.active,
+        nodeCount: workflow.nodes?.length || 0
+      },
+      message: `Workflow "${workflow.name}" updated successfully. Use n8n_get_workflow with mode 'structure' to verify current state.`
     };
   } catch (error) {
     // Track failed mutation
@@ -880,8 +890,12 @@ export async function handleDeleteWorkflow(args: unknown, context?: InstanceCont
 
     return {
       success: true,
-      data: deleted,
-      message: `Workflow ${id} deleted successfully`
+      data: {
+        id: deleted?.id || id,
+        name: deleted?.name,
+        deleted: true
+      },
+      message: `Workflow "${deleted?.name || id}" deleted successfully.`
     };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -1407,17 +1421,33 @@ export async function handleGetExecution(args: unknown, context?: InstanceContex
     // Parse and validate input with new parameters
     const schema = z.object({
       id: z.string(),
-      // New filtering parameters
-      mode: z.enum(['preview', 'summary', 'filtered', 'full']).optional(),
+      // Filtering parameters
+      mode: z.enum(['preview', 'summary', 'filtered', 'full', 'error']).optional(),
       nodeNames: z.array(z.string()).optional(),
       itemsLimit: z.number().optional(),
       includeInputData: z.boolean().optional(),
       // Legacy parameter (backward compatibility)
-      includeData: z.boolean().optional()
+      includeData: z.boolean().optional(),
+      // Error mode specific parameters
+      errorItemsLimit: z.number().min(0).max(100).optional(),
+      includeStackTrace: z.boolean().optional(),
+      includeExecutionPath: z.boolean().optional(),
+      fetchWorkflow: z.boolean().optional()
     });
 
     const params = schema.parse(args);
-    const { id, mode, nodeNames, itemsLimit, includeInputData, includeData } = params;
+    const {
+      id,
+      mode,
+      nodeNames,
+      itemsLimit,
+      includeInputData,
+      includeData,
+      errorItemsLimit,
+      includeStackTrace,
+      includeExecutionPath,
+      fetchWorkflow
+    } = params;
 
     /**
      * Map legacy includeData parameter to mode for backward compatibility
@@ -1456,15 +1486,33 @@ export async function handleGetExecution(args: unknown, context?: InstanceContex
       };
     }
 
+    // For error mode, optionally fetch workflow for accurate upstream detection
+    let workflow: Workflow | undefined;
+    if (effectiveMode === 'error' && fetchWorkflow !== false && execution.workflowId) {
+      try {
+        workflow = await client.getWorkflow(execution.workflowId);
+      } catch (e) {
+        // Workflow fetch failed - continue without it (use heuristics)
+        logger.debug('Could not fetch workflow for error analysis', {
+          workflowId: execution.workflowId,
+          error: e instanceof Error ? e.message : 'Unknown error'
+        });
+      }
+    }
+
     // Apply filtering using ExecutionProcessor
     const filterOptions: ExecutionFilterOptions = {
       mode: effectiveMode,
       nodeNames,
       itemsLimit,
-      includeInputData
+      includeInputData,
+      // Error mode specific options
+      errorItemsLimit,
+      includeStackTrace,
+      includeExecutionPath
     };
 
-    const processedExecution = processExecution(execution, filterOptions);
+    const processedExecution = processExecution(execution, filterOptions, workflow);
 
     return {
       success: true,

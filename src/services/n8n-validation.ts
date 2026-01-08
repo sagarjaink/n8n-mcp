@@ -248,23 +248,32 @@ export function validateWorkflowStructure(workflow: Partial<Workflow>): string[]
       const connectedNodes = new Set<string>();
 
       // Collect all nodes that appear in connections (as source or target)
+      // Check ALL connection types, not just 'main' - AI workflows use ai_tool, ai_languageModel, etc.
+      const ALL_CONNECTION_TYPES = ['main', 'error', 'ai_tool', 'ai_languageModel', 'ai_memory', 'ai_embedding', 'ai_vectorStore'] as const;
+
       Object.entries(workflow.connections).forEach(([sourceName, connection]) => {
         connectedNodes.add(sourceName); // Node has outgoing connection
 
-        if (connection.main && Array.isArray(connection.main)) {
-          connection.main.forEach((outputs) => {
-            if (Array.isArray(outputs)) {
-              outputs.forEach((target) => {
-                connectedNodes.add(target.node); // Node has incoming connection
-              });
-            }
-          });
-        }
+        // Check all connection types for target nodes
+        ALL_CONNECTION_TYPES.forEach(connType => {
+          const connData = (connection as Record<string, unknown>)[connType];
+          if (connData && Array.isArray(connData)) {
+            connData.forEach((outputs) => {
+              if (Array.isArray(outputs)) {
+                outputs.forEach((target: { node: string }) => {
+                  if (target?.node) {
+                    connectedNodes.add(target.node); // Node has incoming connection
+                  }
+                });
+              }
+            });
+          }
+        });
       });
 
       // Find disconnected nodes (excluding non-executable nodes and triggers)
       // Non-executable nodes (sticky notes) are UI-only and don't need connections
-      // Trigger nodes only need outgoing connections
+      // Trigger nodes need either outgoing connections OR inbound AI connections (for mcpTrigger)
       const disconnectedNodes = workflow.nodes.filter(node => {
         // Skip non-executable nodes (sticky notes, etc.) - they're UI-only annotations
         if (isNonExecutableNode(node.type)) {
@@ -274,9 +283,12 @@ export function validateWorkflowStructure(workflow: Partial<Workflow>): string[]
         const isConnected = connectedNodes.has(node.name);
         const isNodeTrigger = isTriggerNode(node.type);
 
-        // Trigger nodes only need outgoing connections
+        // Trigger nodes need outgoing connections OR inbound connections (for mcpTrigger)
+        // mcpTrigger is special: it has "trigger" in its name but only receives inbound ai_tool connections
         if (isNodeTrigger) {
-          return !workflow.connections?.[node.name]; // Disconnected if no outgoing connections
+          const hasOutgoingConnections = !!workflow.connections?.[node.name];
+          const hasInboundConnections = isConnected;
+          return !hasOutgoingConnections && !hasInboundConnections; // Disconnected if NEITHER
         }
 
         // Regular nodes need at least one connection (incoming or outgoing)
@@ -331,24 +343,16 @@ export function validateWorkflowStructure(workflow: Partial<Workflow>): string[]
   }
 
   // Validate active workflows have activatable triggers
-  // Issue #351: executeWorkflowTrigger cannot activate a workflow
-  // It can only be invoked by other workflows
+  // NOTE: Since n8n 2.0, executeWorkflowTrigger is now activatable and MUST be activated to work
   if ((workflow as any).active === true && workflow.nodes && workflow.nodes.length > 0) {
     const activatableTriggers = workflow.nodes.filter(node =>
       !node.disabled && isActivatableTrigger(node.type)
     );
 
-    const executeWorkflowTriggers = workflow.nodes.filter(node =>
-      !node.disabled && node.type.toLowerCase().includes('executeworkflow')
-    );
-
-    if (activatableTriggers.length === 0 && executeWorkflowTriggers.length > 0) {
-      // Workflow is active but only has executeWorkflowTrigger nodes
-      const triggerNames = executeWorkflowTriggers.map(n => n.name).join(', ');
+    if (activatableTriggers.length === 0) {
       errors.push(
-        `Cannot activate workflow with only Execute Workflow Trigger nodes (${triggerNames}). ` +
-        'Execute Workflow Trigger can only be invoked by other workflows, not activated. ' +
-        'Either deactivate the workflow or add a webhook/schedule/polling trigger.'
+        'Cannot activate workflow: No activatable trigger nodes found. ' +
+        'Workflows must have at least one enabled trigger node (webhook, schedule, executeWorkflowTrigger, etc.).'
       );
     }
   }

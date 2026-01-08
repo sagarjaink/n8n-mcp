@@ -152,17 +152,23 @@ function validateWorkflowStructure(workflow) {
         }
         else if (connectionCount > 0 || executableNodes.length > 1) {
             const connectedNodes = new Set();
+            const ALL_CONNECTION_TYPES = ['main', 'error', 'ai_tool', 'ai_languageModel', 'ai_memory', 'ai_embedding', 'ai_vectorStore'];
             Object.entries(workflow.connections).forEach(([sourceName, connection]) => {
                 connectedNodes.add(sourceName);
-                if (connection.main && Array.isArray(connection.main)) {
-                    connection.main.forEach((outputs) => {
-                        if (Array.isArray(outputs)) {
-                            outputs.forEach((target) => {
-                                connectedNodes.add(target.node);
-                            });
-                        }
-                    });
-                }
+                ALL_CONNECTION_TYPES.forEach(connType => {
+                    const connData = connection[connType];
+                    if (connData && Array.isArray(connData)) {
+                        connData.forEach((outputs) => {
+                            if (Array.isArray(outputs)) {
+                                outputs.forEach((target) => {
+                                    if (target?.node) {
+                                        connectedNodes.add(target.node);
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
             });
             const disconnectedNodes = workflow.nodes.filter(node => {
                 if ((0, node_classification_1.isNonExecutableNode)(node.type)) {
@@ -171,7 +177,9 @@ function validateWorkflowStructure(workflow) {
                 const isConnected = connectedNodes.has(node.name);
                 const isNodeTrigger = (0, node_type_utils_1.isTriggerNode)(node.type);
                 if (isNodeTrigger) {
-                    return !workflow.connections?.[node.name];
+                    const hasOutgoingConnections = !!workflow.connections?.[node.name];
+                    const hasInboundConnections = isConnected;
+                    return !hasOutgoingConnections && !hasInboundConnections;
                 }
                 return !isConnected;
             });
@@ -217,12 +225,9 @@ function validateWorkflowStructure(workflow) {
     }
     if (workflow.active === true && workflow.nodes && workflow.nodes.length > 0) {
         const activatableTriggers = workflow.nodes.filter(node => !node.disabled && (0, node_type_utils_1.isActivatableTrigger)(node.type));
-        const executeWorkflowTriggers = workflow.nodes.filter(node => !node.disabled && node.type.toLowerCase().includes('executeworkflow'));
-        if (activatableTriggers.length === 0 && executeWorkflowTriggers.length > 0) {
-            const triggerNames = executeWorkflowTriggers.map(n => n.name).join(', ');
-            errors.push(`Cannot activate workflow with only Execute Workflow Trigger nodes (${triggerNames}). ` +
-                'Execute Workflow Trigger can only be invoked by other workflows, not activated. ' +
-                'Either deactivate the workflow or add a webhook/schedule/polling trigger.');
+        if (activatableTriggers.length === 0) {
+            errors.push('Cannot activate workflow: No activatable trigger nodes found. ' +
+                'Workflows must have at least one enabled trigger node (webhook, schedule, executeWorkflowTrigger, etc.).');
         }
     }
     if (workflow.nodes && workflow.connections) {

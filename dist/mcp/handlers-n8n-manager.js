@@ -285,8 +285,13 @@ async function handleCreateWorkflow(args, context) {
         telemetry_1.telemetry.trackWorkflowCreation(workflow, true);
         return {
             success: true,
-            data: workflow,
-            message: `Workflow "${workflow.name}" created successfully with ID: ${workflow.id}`
+            data: {
+                id: workflow.id,
+                name: workflow.name,
+                active: workflow.active,
+                nodeCount: workflow.nodes?.length || 0
+            },
+            message: `Workflow "${workflow.name}" created successfully with ID: ${workflow.id}. Use n8n_get_workflow with mode 'structure' to verify current state.`
         };
     }
     catch (error) {
@@ -537,8 +542,13 @@ async function handleUpdateWorkflow(args, repository, context) {
         }
         return {
             success: true,
-            data: workflow,
-            message: `Workflow "${workflow.name}" updated successfully`
+            data: {
+                id: workflow.id,
+                name: workflow.name,
+                active: workflow.active,
+                nodeCount: workflow.nodes?.length || 0
+            },
+            message: `Workflow "${workflow.name}" updated successfully. Use n8n_get_workflow with mode 'structure' to verify current state.`
         };
     }
     catch (error) {
@@ -594,8 +604,12 @@ async function handleDeleteWorkflow(args, context) {
         const deleted = await client.deleteWorkflow(id);
         return {
             success: true,
-            data: deleted,
-            message: `Workflow ${id} deleted successfully`
+            data: {
+                id: deleted?.id || id,
+                name: deleted?.name,
+                deleted: true
+            },
+            message: `Workflow "${deleted?.name || id}" deleted successfully.`
         };
     }
     catch (error) {
@@ -682,7 +696,7 @@ async function handleValidateWorkflow(args, repository, context) {
     try {
         const client = ensureApiConfigured(context);
         const input = validateWorkflowSchema.parse(args);
-        const workflowResponse = await handleGetWorkflow({ id: input.id });
+        const workflowResponse = await handleGetWorkflow({ id: input.id }, context);
         if (!workflowResponse.success) {
             return workflowResponse;
         }
@@ -1010,14 +1024,18 @@ async function handleGetExecution(args, context) {
         const client = ensureApiConfigured(context);
         const schema = zod_1.z.object({
             id: zod_1.z.string(),
-            mode: zod_1.z.enum(['preview', 'summary', 'filtered', 'full']).optional(),
+            mode: zod_1.z.enum(['preview', 'summary', 'filtered', 'full', 'error']).optional(),
             nodeNames: zod_1.z.array(zod_1.z.string()).optional(),
             itemsLimit: zod_1.z.number().optional(),
             includeInputData: zod_1.z.boolean().optional(),
-            includeData: zod_1.z.boolean().optional()
+            includeData: zod_1.z.boolean().optional(),
+            errorItemsLimit: zod_1.z.number().min(0).max(100).optional(),
+            includeStackTrace: zod_1.z.boolean().optional(),
+            includeExecutionPath: zod_1.z.boolean().optional(),
+            fetchWorkflow: zod_1.z.boolean().optional()
         });
         const params = schema.parse(args);
-        const { id, mode, nodeNames, itemsLimit, includeInputData, includeData } = params;
+        const { id, mode, nodeNames, itemsLimit, includeInputData, includeData, errorItemsLimit, includeStackTrace, includeExecutionPath, fetchWorkflow } = params;
         let effectiveMode = mode;
         if (!effectiveMode && includeData !== undefined) {
             effectiveMode = includeData ? 'summary' : undefined;
@@ -1030,13 +1048,28 @@ async function handleGetExecution(args, context) {
                 data: execution
             };
         }
+        let workflow;
+        if (effectiveMode === 'error' && fetchWorkflow !== false && execution.workflowId) {
+            try {
+                workflow = await client.getWorkflow(execution.workflowId);
+            }
+            catch (e) {
+                logger_1.logger.debug('Could not fetch workflow for error analysis', {
+                    workflowId: execution.workflowId,
+                    error: e instanceof Error ? e.message : 'Unknown error'
+                });
+            }
+        }
         const filterOptions = {
             mode: effectiveMode,
             nodeNames,
             itemsLimit,
-            includeInputData
+            includeInputData,
+            errorItemsLimit,
+            includeStackTrace,
+            includeExecutionPath
         };
-        const processedExecution = (0, execution_processor_1.processExecution)(execution, filterOptions);
+        const processedExecution = (0, execution_processor_1.processExecution)(execution, filterOptions, workflow);
         return {
             success: true,
             data: processedExecution

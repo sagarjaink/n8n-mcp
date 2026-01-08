@@ -46,9 +46,9 @@ export const n8nManagementTools: ToolDefinition[] = [
             }
           }
         },
-        connections: { 
-          type: 'object', 
-          description: 'Workflow connections object. Keys are source node IDs, values define output connections' 
+        connections: {
+          type: 'object',
+          description: 'Workflow connections object. Keys are source node names (the name field, not id), values define output connections'
         },
         settings: {
           type: 'object',
@@ -66,7 +66,13 @@ export const n8nManagementTools: ToolDefinition[] = [
         }
       },
       required: ['name', 'nodes', 'connections']
-    }
+    },
+    annotations: {
+      title: 'Create Workflow',
+      readOnlyHint: false,
+      destructiveHint: false,
+      openWorldHint: true,
+    },
   },
   {
     name: 'n8n_get_workflow',
@@ -86,7 +92,13 @@ export const n8nManagementTools: ToolDefinition[] = [
         }
       },
       required: ['id']
-    }
+    },
+    annotations: {
+      title: 'Get Workflow',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
   },
   {
     name: 'n8n_update_full_workflow',
@@ -120,7 +132,14 @@ export const n8nManagementTools: ToolDefinition[] = [
         }
       },
       required: ['id']
-    }
+    },
+    annotations: {
+      title: 'Update Full Workflow',
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
   },
   {
     name: 'n8n_update_partial_workflow',
@@ -151,7 +170,14 @@ export const n8nManagementTools: ToolDefinition[] = [
         }
       },
       required: ['id', 'operations']
-    }
+    },
+    annotations: {
+      title: 'Update Partial Workflow',
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
   },
   {
     name: 'n8n_delete_workflow',
@@ -165,7 +191,13 @@ export const n8nManagementTools: ToolDefinition[] = [
         }
       },
       required: ['id']
-    }
+    },
+    annotations: {
+      title: 'Delete Workflow',
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: true,
+    },
   },
   {
     name: 'n8n_list_workflows',
@@ -194,12 +226,18 @@ export const n8nManagementTools: ToolDefinition[] = [
           type: 'string', 
           description: 'Filter by project ID (enterprise feature)' 
         },
-        excludePinnedData: { 
-          type: 'boolean', 
-          description: 'Exclude pinned data from response (default: true)' 
+        excludePinnedData: {
+          type: 'boolean',
+          description: 'Exclude pinned data from response (default: true)'
         }
       }
-    }
+    },
+    annotations: {
+      title: 'List Workflows',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
   },
   {
     name: 'n8n_validate_workflow',
@@ -227,16 +265,22 @@ export const n8nManagementTools: ToolDefinition[] = [
               type: 'boolean', 
               description: 'Validate n8n expressions (default: true)' 
             },
-            profile: { 
-              type: 'string', 
+            profile: {
+              type: 'string',
               enum: ['minimal', 'runtime', 'ai-friendly', 'strict'],
-              description: 'Validation profile to use (default: runtime)' 
+              description: 'Validation profile to use (default: runtime)'
             }
           }
         }
       },
       required: ['id']
-    }
+    },
+    annotations: {
+      title: 'Validate Workflow',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
   },
   {
     name: 'n8n_autofix_workflow',
@@ -271,7 +315,14 @@ export const n8nManagementTools: ToolDefinition[] = [
         }
       },
       required: ['id']
-    }
+    },
+    annotations: {
+      title: 'Autofix Workflow',
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
   },
 
   // Execution Management Tools
@@ -328,7 +379,13 @@ export const n8nManagementTools: ToolDefinition[] = [
         }
       },
       required: ['workflowId']
-    }
+    },
+    annotations: {
+      title: 'Test Workflow',
+      readOnlyHint: false,
+      destructiveHint: false,
+      openWorldHint: true,
+    },
   },
   {
     name: 'n8n_executions',
@@ -349,8 +406,8 @@ export const n8nManagementTools: ToolDefinition[] = [
         // For action='get' - detail level
         mode: {
           type: 'string',
-          enum: ['preview', 'summary', 'filtered', 'full'],
-          description: 'For action=get: preview=structure only, summary=2 items (default), filtered=custom, full=all data'
+          enum: ['preview', 'summary', 'filtered', 'full', 'error'],
+          description: 'For action=get: preview=structure only, summary=2 items (default), filtered=custom, full=all data, error=optimized error debugging'
         },
         nodeNames: {
           type: 'array',
@@ -364,6 +421,23 @@ export const n8nManagementTools: ToolDefinition[] = [
         includeInputData: {
           type: 'boolean',
           description: 'For action=get: include input data in addition to output (default: false)'
+        },
+        // Error mode specific parameters
+        errorItemsLimit: {
+          type: 'number',
+          description: 'For action=get with mode=error: sample items from upstream node (default: 2, max: 100)'
+        },
+        includeStackTrace: {
+          type: 'boolean',
+          description: 'For action=get with mode=error: include full stack trace (default: false, shows truncated)'
+        },
+        includeExecutionPath: {
+          type: 'boolean',
+          description: 'For action=get with mode=error: include execution path leading to error (default: true)'
+        },
+        fetchWorkflow: {
+          type: 'boolean',
+          description: 'For action=get with mode=error: fetch workflow for accurate upstream detection (default: true)'
         },
         // For action='list'
         limit: {
@@ -393,7 +467,13 @@ export const n8nManagementTools: ToolDefinition[] = [
         }
       },
       required: ['action']
-    }
+    },
+    annotations: {
+      title: 'Manage Executions',
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: true,
+    },
   },
 
   // System Tools
@@ -414,7 +494,13 @@ export const n8nManagementTools: ToolDefinition[] = [
           description: 'Include extra details in diagnostic mode (default: false)'
         }
       }
-    }
+    },
+    annotations: {
+      title: 'Health Check',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
   },
   {
     name: 'n8n_workflow_versions',
@@ -468,7 +554,13 @@ export const n8nManagementTools: ToolDefinition[] = [
         }
       },
       required: ['mode']
-    }
+    },
+    annotations: {
+      title: 'Workflow Versions',
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: true,
+    },
   },
 
   // Template Deployment Tool
@@ -503,6 +595,12 @@ export const n8nManagementTools: ToolDefinition[] = [
         }
       },
       required: ['templateId']
-    }
+    },
+    annotations: {
+      title: 'Deploy Template',
+      readOnlyHint: false,
+      destructiveHint: false,
+      openWorldHint: true,
+    },
   }
 ];

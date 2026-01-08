@@ -59,10 +59,13 @@ describe('NodeRepository - Outputs Handling', () => {
       INSERT OR REPLACE INTO nodes (
         node_type, package_name, display_name, description,
         category, development_style, is_ai_tool, is_trigger,
-        is_webhook, is_versioned, version, documentation,
+        is_webhook, is_versioned, is_tool_variant, tool_variant_of,
+        has_tool_variant, version, documentation,
         properties_schema, operations, credentials_required,
-        outputs, output_names
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        outputs, output_names,
+        is_community, is_verified, author_name, author_github_url,
+        npm_package_name, npm_version, npm_downloads, community_fetched_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
       expect(mockStatement.run).toHaveBeenCalledWith(
@@ -72,17 +75,28 @@ describe('NodeRepository - Outputs Handling', () => {
         'Split data into batches',
         'transform',
         'programmatic',
-        0, // false
-        0, // false
-        0, // false
-        0, // false
-        '3',
+        0, // isAITool
+        0, // isTrigger
+        0, // isWebhook
+        0, // isVersioned
+        0, // isToolVariant
+        null, // toolVariantOf
+        0, // hasToolVariant
+        '3', // version
         null, // documentation
         JSON.stringify([], null, 2), // properties
         JSON.stringify([], null, 2), // operations
         JSON.stringify([], null, 2), // credentials
         JSON.stringify(outputs, null, 2), // outputs
-        JSON.stringify(outputNames, null, 2) // output_names
+        JSON.stringify(outputNames, null, 2), // output_names
+        0, // is_community
+        0, // is_verified
+        null, // author_name
+        null, // author_github_url
+        null, // npm_package_name
+        null, // npm_version
+        0, // npm_downloads
+        null // community_fetched_at
       );
     });
 
@@ -114,8 +128,8 @@ describe('NodeRepository - Outputs Handling', () => {
       repository.saveNode(node);
 
       const callArgs = mockStatement.run.mock.calls[0];
-      expect(callArgs[15]).toBe(JSON.stringify(outputs, null, 2)); // outputs
-      expect(callArgs[16]).toBe(null); // output_names should be null
+      expect(callArgs[18]).toBe(JSON.stringify(outputs, null, 2)); // outputs
+      expect(callArgs[19]).toBe(null); // output_names should be null
     });
 
     it('should save node with only outputNames (no outputs)', () => {
@@ -143,8 +157,8 @@ describe('NodeRepository - Outputs Handling', () => {
       repository.saveNode(node);
 
       const callArgs = mockStatement.run.mock.calls[0];
-      expect(callArgs[15]).toBe(null); // outputs should be null
-      expect(callArgs[16]).toBe(JSON.stringify(outputNames, null, 2)); // output_names
+      expect(callArgs[18]).toBe(null); // outputs should be null
+      expect(callArgs[19]).toBe(JSON.stringify(outputNames, null, 2)); // output_names
     });
 
     it('should save node without outputs or outputNames', () => {
@@ -169,8 +183,8 @@ describe('NodeRepository - Outputs Handling', () => {
       repository.saveNode(node);
 
       const callArgs = mockStatement.run.mock.calls[0];
-      expect(callArgs[15]).toBe(null); // outputs should be null
-      expect(callArgs[16]).toBe(null); // output_names should be null
+      expect(callArgs[18]).toBe(null); // outputs should be null
+      expect(callArgs[19]).toBe(null); // output_names should be null
     });
 
     it('should handle empty outputs and outputNames arrays', () => {
@@ -196,8 +210,8 @@ describe('NodeRepository - Outputs Handling', () => {
       repository.saveNode(node);
 
       const callArgs = mockStatement.run.mock.calls[0];
-      expect(callArgs[15]).toBe(JSON.stringify([], null, 2)); // outputs
-      expect(callArgs[16]).toBe(JSON.stringify([], null, 2)); // output_names
+      expect(callArgs[18]).toBe(JSON.stringify([], null, 2)); // outputs
+      expect(callArgs[19]).toBe(JSON.stringify([], null, 2)); // output_names
     });
   });
 
@@ -220,13 +234,27 @@ describe('NodeRepository - Outputs Handling', () => {
         is_trigger: 0,
         is_webhook: 0,
         is_versioned: 0,
+        is_tool_variant: 0,
+        tool_variant_of: null,
+        has_tool_variant: 0,
         version: '3',
         properties_schema: JSON.stringify([]),
         operations: JSON.stringify([]),
         credentials_required: JSON.stringify([]),
         documentation: null,
         outputs: JSON.stringify(outputs),
-        output_names: JSON.stringify(outputNames)
+        output_names: JSON.stringify(outputNames),
+        is_community: 0,
+        is_verified: 0,
+        author_name: null,
+        author_github_url: null,
+        npm_package_name: null,
+        npm_version: null,
+        npm_downloads: 0,
+        community_fetched_at: null,
+        npm_readme: null,
+        ai_documentation_summary: null,
+        ai_summary_generated_at: null
       };
 
       mockStatement.get.mockReturnValue(mockRow);
@@ -244,13 +272,27 @@ describe('NodeRepository - Outputs Handling', () => {
         isTrigger: false,
         isWebhook: false,
         isVersioned: false,
+        isToolVariant: false,
+        toolVariantOf: null,
+        hasToolVariant: false,
         version: '3',
         properties: [],
         operations: [],
         credentials: [],
         hasDocumentation: false,
         outputs,
-        outputNames
+        outputNames,
+        isCommunity: false,
+        isVerified: false,
+        authorName: null,
+        authorGithubUrl: null,
+        npmPackageName: null,
+        npmVersion: null,
+        npmDownloads: 0,
+        communityFetchedAt: null,
+        npmReadme: null,
+        aiDocumentationSummary: null,
+        aiSummaryGeneratedAt: null
       });
     });
 
@@ -270,13 +312,24 @@ describe('NodeRepository - Outputs Handling', () => {
         is_trigger: 0,
         is_webhook: 0,
         is_versioned: 0,
+        is_tool_variant: 0,
+        tool_variant_of: null,
+        has_tool_variant: 0,
         version: '2',
         properties_schema: JSON.stringify([]),
         operations: JSON.stringify([]),
         credentials_required: JSON.stringify([]),
         documentation: null,
         outputs: JSON.stringify(outputs),
-        output_names: null
+        output_names: null,
+        is_community: 0,
+        is_verified: 0,
+        author_name: null,
+        author_github_url: null,
+        npm_package_name: null,
+        npm_version: null,
+        npm_downloads: 0,
+        community_fetched_at: null
       };
 
       mockStatement.get.mockReturnValue(mockRow);
@@ -301,13 +354,24 @@ describe('NodeRepository - Outputs Handling', () => {
         is_trigger: 0,
         is_webhook: 0,
         is_versioned: 0,
+        is_tool_variant: 0,
+        tool_variant_of: null,
+        has_tool_variant: 0,
         version: '1',
         properties_schema: JSON.stringify([]),
         operations: JSON.stringify([]),
         credentials_required: JSON.stringify([]),
         documentation: null,
         outputs: null,
-        output_names: JSON.stringify(outputNames)
+        output_names: JSON.stringify(outputNames),
+        is_community: 0,
+        is_verified: 0,
+        author_name: null,
+        author_github_url: null,
+        npm_package_name: null,
+        npm_version: null,
+        npm_downloads: 0,
+        community_fetched_at: null
       };
 
       mockStatement.get.mockReturnValue(mockRow);
@@ -330,13 +394,24 @@ describe('NodeRepository - Outputs Handling', () => {
         is_trigger: 0,
         is_webhook: 0,
         is_versioned: 0,
+        is_tool_variant: 0,
+        tool_variant_of: null,
+        has_tool_variant: 0,
         version: '4',
         properties_schema: JSON.stringify([]),
         operations: JSON.stringify([]),
         credentials_required: JSON.stringify([]),
         documentation: null,
         outputs: null,
-        output_names: null
+        output_names: null,
+        is_community: 0,
+        is_verified: 0,
+        author_name: null,
+        author_github_url: null,
+        npm_package_name: null,
+        npm_version: null,
+        npm_downloads: 0,
+        community_fetched_at: null
       };
 
       mockStatement.get.mockReturnValue(mockRow);
@@ -359,13 +434,24 @@ describe('NodeRepository - Outputs Handling', () => {
         is_trigger: 0,
         is_webhook: 0,
         is_versioned: 0,
+        is_tool_variant: 0,
+        tool_variant_of: null,
+        has_tool_variant: 0,
         version: '1',
         properties_schema: JSON.stringify([]),
         operations: JSON.stringify([]),
         credentials_required: JSON.stringify([]),
         documentation: null,
         outputs: '{invalid json}',
-        output_names: '[invalid, json'
+        output_names: '[invalid, json',
+        is_community: 0,
+        is_verified: 0,
+        author_name: null,
+        author_github_url: null,
+        npm_package_name: null,
+        npm_version: null,
+        npm_downloads: 0,
+        community_fetched_at: null
       };
 
       mockStatement.get.mockReturnValue(mockRow);
@@ -404,13 +490,24 @@ describe('NodeRepository - Outputs Handling', () => {
         is_trigger: 0,
         is_webhook: 0,
         is_versioned: 0,
+        is_tool_variant: 0,
+        tool_variant_of: null,
+        has_tool_variant: 0,
         version: '3',
         properties_schema: JSON.stringify([]),
         operations: JSON.stringify([]),
         credentials_required: JSON.stringify([]),
         documentation: null,
         outputs: JSON.stringify(outputs),
-        output_names: JSON.stringify(outputNames)
+        output_names: JSON.stringify(outputNames),
+        is_community: 0,
+        is_verified: 0,
+        author_name: null,
+        author_github_url: null,
+        npm_package_name: null,
+        npm_version: null,
+        npm_downloads: 0,
+        community_fetched_at: null,
       };
 
       mockStatement.get.mockReturnValue(mockRow);
@@ -441,13 +538,24 @@ describe('NodeRepository - Outputs Handling', () => {
         is_trigger: 0,
         is_webhook: 0,
         is_versioned: 0,
+        is_tool_variant: 0,
+        tool_variant_of: null,
+        has_tool_variant: 0,
         version: '1',
         properties_schema: JSON.stringify([]),
         operations: JSON.stringify([]),
         credentials_required: JSON.stringify([]),
         documentation: null,
         outputs: JSON.stringify(outputs),
-        output_names: JSON.stringify(outputNames)
+        output_names: JSON.stringify(outputNames),
+        is_community: 0,
+        is_verified: 0,
+        author_name: null,
+        author_github_url: null,
+        npm_package_name: null,
+        npm_version: null,
+        npm_downloads: 0,
+        community_fetched_at: null,
       };
 
       mockStatement.all.mockReturnValue([mockRow]);
@@ -470,13 +578,24 @@ describe('NodeRepository - Outputs Handling', () => {
         is_trigger: 0,
         is_webhook: 0,
         is_versioned: 0,
+        is_tool_variant: 0,
+        tool_variant_of: null,
+        has_tool_variant: 0,
         version: '1',
         properties_schema: JSON.stringify([]),
         operations: JSON.stringify([]),
         credentials_required: JSON.stringify([]),
         documentation: null,
         outputs: '', // empty string
-        output_names: '' // empty string
+        output_names: '', // empty string
+        is_community: 0,
+        is_verified: 0,
+        author_name: null,
+        author_github_url: null,
+        npm_package_name: null,
+        npm_version: null,
+        npm_downloads: 0,
+        community_fetched_at: null,
       };
 
       mockStatement.all.mockReturnValue([mockRow]);
@@ -543,13 +662,24 @@ describe('NodeRepository - Outputs Handling', () => {
         is_trigger: 0,
         is_webhook: 0,
         is_versioned: 0,
+        is_tool_variant: 0,
+        tool_variant_of: null,
+        has_tool_variant: 0,
         version: '3',
         properties_schema: JSON.stringify([]),
         operations: JSON.stringify([]),
         credentials_required: JSON.stringify([]),
         documentation: null,
         outputs: JSON.stringify(complexOutputs),
-        output_names: JSON.stringify(['done', 'loop'])
+        output_names: JSON.stringify(['done', 'loop']),
+        is_community: 0,
+        is_verified: 0,
+        author_name: null,
+        author_github_url: null,
+        npm_package_name: null,
+        npm_version: null,
+        npm_downloads: 0,
+        community_fetched_at: null,
       };
 
       mockStatement.get.mockReturnValue(mockRow);
