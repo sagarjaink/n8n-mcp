@@ -161,6 +161,7 @@
     "n8n-core": "^2.2.2",
     "n8n-workflow": "^2.2.2",
     "openai": "^4.77.0",
+        "better-sqlite3": "^11.10.0",
     "sql.js": "^1.13.0",
     "tslib": "^2.6.2",
     "uuid": "^10.0.0",
@@ -169,7 +170,6 @@
   "optionalDependencies": {
     "@rollup/rollup-darwin-arm64": "^4.50.0",
     "@rollup/rollup-linux-x64-gnu": "^4.50.0",
-    "better-sqlite3": "^11.10.0"
   },
   "overrides": {
     "pyodide": "0.26.4"
