@@ -1277,3 +1277,5 @@ Special thanks to the prolific template contributors whose work helps thousands 
   <strong>Built with ❤️ for the n8n community</strong><br>
   <sub>Making AI + n8n workflow creation delightful</sub>
 </div>
+
+<!-- Trigger rebuild -->
