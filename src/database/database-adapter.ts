@@ -43,8 +43,7 @@ export interface ColumnDefinition {
 
 /**
  * Factory function to create a database adapter
- * Tries better-sqlite3 first, falls back to sql.js if needed
- */
+ * Uses better-sqlite3 for optimal performance and memory efficiency */
 export async function createDatabaseAdapter(dbPath: string): Promise<DatabaseAdapter> {
   // Log Node.js version information
   // Only log in non-stdio mode
@@ -57,7 +56,6 @@ export async function createDatabaseAdapter(dbPath: string): Promise<DatabaseAda
   }
   
   // First, try to use better-sqlite3
-  try {
     if (process.env.MCP_MODE !== 'stdio') {
       logger.info('Attempting to use better-sqlite3...');
     }
@@ -66,42 +64,7 @@ export async function createDatabaseAdapter(dbPath: string): Promise<DatabaseAda
       logger.info('Successfully initialized better-sqlite3 adapter');
     }
     return adapter;
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    
-    // Check if it's a version mismatch error
-    if (errorMessage.includes('NODE_MODULE_VERSION') || errorMessage.includes('was compiled against a different Node.js version')) {
-      if (process.env.MCP_MODE !== 'stdio') {
-        logger.warn(`Node.js version mismatch detected. Better-sqlite3 was compiled for a different Node.js version.`);
-      }
-      if (process.env.MCP_MODE !== 'stdio') {
-        logger.warn(`Current Node.js version: ${process.version}`);
-      }
-    }
-    
-    if (process.env.MCP_MODE !== 'stdio') {
-      logger.warn('Failed to initialize better-sqlite3, falling back to sql.js', error);
-    }
-    
-    // Fall back to sql.js
-    try {
-      const adapter = await createSQLJSAdapter(dbPath);
-      if (process.env.MCP_MODE !== 'stdio') {
-        logger.info('Successfully initialized sql.js adapter (pure JavaScript, no native dependencies)');
-      }
-      return adapter;
-    } catch (sqlJsError) {
-      if (process.env.MCP_MODE !== 'stdio') {
-        logger.error('Failed to initialize sql.js adapter', sqlJsError);
-      }
-      throw new Error('Failed to initialize any database adapter');
-    }
   }
-}
-
-/**
- * Create better-sqlite3 adapter
- */
 async function createBetterSQLiteAdapter(dbPath: string): Promise<DatabaseAdapter> {
   try {
     const Database = require('better-sqlite3');
